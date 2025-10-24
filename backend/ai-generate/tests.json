@@ -1,0 +1,21 @@
+{
+  "tests": [
+    {
+      "name": "Test AI character generation",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "type": "character",
+        "prompt": "Создай киберпанк хакера"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "type": "character",
+        "content": {
+          "name": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

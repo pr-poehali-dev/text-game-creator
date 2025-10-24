@@ -6,32 +6,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import Icon from '@/components/ui/icon';
+import { Character, World, Message, sendChatMessage, generateCharacter, generateWorld } from '@/lib/ai';
+import GenerateDialog from '@/components/GenerateDialog';
 
 type ViewType = 'home' | 'worlds' | 'characters' | 'stories' | 'profile' | 'chat';
-
-interface Character {
-  id: string;
-  name: string;
-  description: string;
-  avatar: string;
-  world: string;
-}
-
-interface World {
-  id: string;
-  name: string;
-  description: string;
-  genre: string;
-  characters: number;
-}
-
-interface Message {
-  id: string;
-  sender: 'user' | 'ai';
-  text: string;
-  timestamp: Date;
-}
 
 const Index = () => {
   const [currentView, setCurrentView] = useState<ViewType>('home');
@@ -39,8 +21,14 @@ const Index = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [characterPrompt, setCharacterPrompt] = useState('');
+  const [worldPrompt, setWorldPrompt] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<Array<{role: string; content: string}>>([]);
+  const { toast } = useToast();
 
-  const worlds: World[] = [
+  const [worlds, setWorlds] = useState<World[]>([
     {
       id: '1',
       name: 'Кибер-Токио 2099',
@@ -62,9 +50,9 @@ const Index = () => {
       genre: 'Sci-Fi',
       characters: 6
     }
-  ];
+  ]);
 
-  const characters: Character[] = [
+  const [characters, setCharacters] = useState<Character[]>([
     {
       id: '1',
       name: 'Юки',
@@ -93,9 +81,9 @@ const Index = () => {
       avatar: '🔮',
       world: 'Академия Магии'
     }
-  ];
+  ]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim() || !selectedCharacter) return;
 
     const newMessage: Message = {
@@ -105,29 +93,95 @@ const Index = () => {
       timestamp: new Date()
     };
 
-    setMessages([...messages, newMessage]);
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
     setInputMessage('');
 
-    setTimeout(() => {
+    const newHistory = [...conversationHistory, { role: 'user', content: inputMessage }];
+    setConversationHistory(newHistory);
+
+    setIsGenerating(true);
+    try {
+      const aiText = await sendChatMessage(selectedCharacter, inputMessage, newHistory);
+      
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: `${selectedCharacter.name}: Интересно! Расскажи мне больше об этом...`,
+        text: aiText,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiResponse]);
-    }, 1000);
+      setConversationHistory(prev => [...prev, { role: 'assistant', content: aiText }]);
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка',
+        description: error.message || 'Не удалось получить ответ от AI',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const startChat = (character: Character) => {
     setSelectedCharacter(character);
     setCurrentView('chat');
+    const initialMessage = `Привет! Я ${character.name}. ${character.description}. О чём поговорим?`;
     setMessages([{
       id: '0',
       sender: 'ai',
-      text: `Привет! Я ${character.name}. ${character.description}. О чём поговорим?`,
+      text: initialMessage,
       timestamp: new Date()
     }]);
+    setConversationHistory([{ role: 'assistant', content: initialMessage }]);
+  };
+
+  const handleGenerateCharacter = async () => {
+    if (!characterPrompt.trim()) return;
+    
+    setIsGenerating(true);
+    try {
+      const newCharacter = await generateCharacter(characterPrompt);
+      setCharacters(prev => [...prev, newCharacter]);
+      setCharacterPrompt('');
+      setIsDialogOpen(false);
+      toast({
+        title: 'Персонаж создан!',
+        description: `${newCharacter.name} теперь доступен для диалога`
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка',
+        description: error.message || 'Не удалось создать персонажа',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateWorld = async () => {
+    if (!worldPrompt.trim()) return;
+    
+    setIsGenerating(true);
+    try {
+      const newWorld = await generateWorld(worldPrompt);
+      setWorlds(prev => [...prev, newWorld]);
+      setWorldPrompt('');
+      setIsDialogOpen(false);
+      toast({
+        title: 'Мир создан!',
+        description: `${newWorld.name} добавлен в вашу коллекцию`
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка',
+        description: error.message || 'Не удалось создать мир',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const menuItems = [
@@ -277,10 +331,7 @@ const Index = () => {
           <div className="animate-fade-in space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-3xl font-bold">Миры</h2>
-              <Button className="bg-gradient-to-r from-primary to-accent">
-                <Icon name="Plus" size={20} className="mr-2" />
-                Создать мир
-              </Button>
+              <GenerateDialog type="world" onGenerate={handleGenerateWorld} isGenerating={isGenerating} />
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -314,10 +365,7 @@ const Index = () => {
           <div className="animate-fade-in space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-3xl font-bold">Персонажи</h2>
-              <Button className="bg-gradient-to-r from-primary to-accent">
-                <Icon name="Plus" size={20} className="mr-2" />
-                Создать персонажа
-              </Button>
+              <GenerateDialog type="character" onGenerate={handleGenerateCharacter} isGenerating={isGenerating} />
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
@@ -407,11 +455,21 @@ const Index = () => {
                       placeholder="Напиши сообщение..."
                       value={inputMessage}
                       onChange={(e) => setInputMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                      onKeyPress={(e) => e.key === 'Enter' && !isGenerating && handleSendMessage()}
                       className="flex-1"
+                      disabled={isGenerating}
                     />
-                    <Button onClick={handleSendMessage} size="icon" className="bg-gradient-to-r from-primary to-accent">
-                      <Icon name="Send" size={20} />
+                    <Button 
+                      onClick={handleSendMessage} 
+                      size="icon" 
+                      className="bg-gradient-to-r from-primary to-accent"
+                      disabled={isGenerating || !inputMessage.trim()}
+                    >
+                      {isGenerating ? (
+                        <Icon name="Loader2" size={20} className="animate-spin" />
+                      ) : (
+                        <Icon name="Send" size={20} />
+                      )}
                     </Button>
                   </div>
                 </div>

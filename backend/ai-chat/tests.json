@@ -1,0 +1,21 @@
+{
+  "tests": [
+    {
+      "name": "Test AI chat endpoint with character",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "characterId": "1",
+        "characterName": "Юки",
+        "characterDescription": "Хакер-одиночка с загадочным прошлым",
+        "message": "Привет! Как дела?"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "message": "string",
+        "characterName": "Юки"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
